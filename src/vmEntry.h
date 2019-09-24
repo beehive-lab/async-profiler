@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2019, APT Group, School of Computer Science,
+ * The University of Manchester. All rights reserved.
  * Copyright 2016 Andrei Pangin
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,13 +65,18 @@ typedef void (*AsyncGetCallTrace)(ASGCT_CallTrace*, jint, void*);
 class VM {
   private:
     static JavaVM* _vm;
+#ifndef MAXINE
     static jvmtiEnv* _jvmti;
+#endif
 
     static void* getLibraryHandle(const char* name);
     static void loadMethodIDs(jvmtiEnv* jvmti, jclass klass);
     static void loadAllMethodIDs(jvmtiEnv* jvmti);
 
   public:
+#ifdef MAXINE
+    static jvmtiEnv* _jvmti;
+#endif
     static void* _libjvm;
     static void* _libjava;
     static AsyncGetCallTrace _asyncGetCallTrace;

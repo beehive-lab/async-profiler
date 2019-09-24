@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2019, APT Group, School of Computer Science,
+ * The University of Manchester. All rights reserved.
  * Copyright 2016 Andrei Pangin
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -234,12 +236,22 @@ const char* Profiler::findNativeMethod(const void* address) {
 int Profiler::getNativeTrace(void* ucontext, ASGCT_CallFrame* frames, int tid, bool* stopped_at_java_frame) {
     const void* native_callchain[MAX_NATIVE_FRAMES];
     int native_frames = _engine->getNativeTrace(ucontext, tid, native_callchain, MAX_NATIVE_FRAMES,
+#ifndef MAXINE
                                                 _jit_min_address, _jit_max_address);
+#else
+                                                _jit_min_address, _jit_max_address,
+                                                _code_start_address, _code_end_address);
+#endif
 
     *stopped_at_java_frame = false;
     if (native_frames > 0) {
         const void* last_pc = native_callchain[native_frames - 1];
+#ifndef MAXINE
         if (last_pc >= _jit_min_address && last_pc < _jit_max_address) {
+#else
+        if ((last_pc >= _jit_min_address && last_pc < _jit_max_address) ||
+            (last_pc >= _code_start_address && last_pc < _code_end_address)) {
+#endif
             *stopped_at_java_frame = true;
             native_frames--;
         }
@@ -298,7 +310,11 @@ int Profiler::getJavaTraceAsync(void* ucontext, ASGCT_CallFrame* frames, int max
             // Restore previous context
             trace.num_frames = ticks_unknown_Java;
         }
+#ifndef MAXINE
     } else if (trace.num_frames == ticks_GC_active && _JvmtiEnv_GetStackTrace != NULL) {
+#else
+    } else if (trace.num_frames == ticks_GC_active) {
+#endif
         // While GC is running Java threads are known to be at safepoint
         return getJavaTraceJvmti((jvmtiFrameInfo*)frames, frames, max_depth);
     }
@@ -324,9 +340,18 @@ int Profiler::getJavaTraceJvmti(jvmtiFrameInfo* jvmti_frames, ASGCT_CallFrame* f
     // We cannot call pure JVM TI here, because it assumes _thread_in_native state,
     // but allocation events happen in _thread_in_vm state,
     // see https://github.com/jvm-profiling-tools/async-profiler/issues/64
+#ifndef MAXINE
     void* thread = _ThreadLocalStorage_thread();
+#else
+    void* thread;
+    VM::_jvmti->GetCurrentThread((jthread*) &thread);
+#endif
     int num_frames;
+#ifndef MAXINE
     if (_JvmtiEnv_GetStackTrace(NULL, thread, 0, max_depth, jvmti_frames, &num_frames) == 0 && num_frames > 0) {
+#else
+    if (VM::_jvmti->GetStackTrace((jthread) thread, 0, max_depth, jvmti_frames, &num_frames) == 0 && num_frames > 0) {
+#endif
         // Profiler expects stack trace in AsyncGetCallTrace format; convert it now
         for (int i = 0; i < num_frames; i++) {
             frames[i].method_id = jvmti_frames[i].method;
@@ -349,7 +374,12 @@ bool Profiler::fillTopFrame(const void* pc, ASGCT_CallFrame* frame) {
     _jit_lock.lockShared();
 
     // Check if PC lies within JVM's compiled code cache
+#ifndef MAXINE
     if (pc >= _jit_min_address && pc < _jit_max_address) {
+#else
+    if ((pc >= _jit_min_address && pc < _jit_max_address) ||
+        (pc >= _code_start_address && pc < _code_end_address)) {
+#endif
         if ((method = _java_methods.find(pc)) != NULL) {
             // PC belong to a JIT compiled method
             frame->bci = 0;
@@ -368,7 +398,12 @@ bool Profiler::fillTopFrame(const void* pc, ASGCT_CallFrame* frame) {
 bool Profiler::addressInCode(const void* pc) {
     // 1. Check if PC lies within JVM's compiled code cache
     // Address in CodeCache is executable if it belongs to a Java method or a runtime stub
+#ifndef MAXINE
     if (pc >= _jit_min_address && pc < _jit_max_address) {
+#else
+    if ((pc >= _jit_min_address && pc < _jit_max_address) ||
+        (pc >= _code_start_address && pc < _code_end_address)) {
+#endif
         _jit_lock.lockShared();
         bool valid = _java_methods.find(pc) != NULL || _runtime_stubs.find(pc) != NULL;
         _jit_lock.unlockShared();
@@ -397,7 +432,12 @@ void Profiler::recordSample(void* ucontext, u64 counter, jint event_type, jmetho
 
         if (event_type == 0) {
             // Need to reset PerfEvents ring buffer, even though we discard the collected trace
+#ifndef MAXINE
             _engine->getNativeTrace(ucontext, tid, NULL, 0, _jit_min_address, _jit_max_address);
+#else
+            _engine->getNativeTrace(ucontext, tid, NULL, 0, _jit_min_address, _jit_max_address,
+                                    _code_start_address, _code_end_address);
+#endif
         }
         return;
     }
@@ -414,7 +454,11 @@ void Profiler::recordSample(void* ucontext, u64 counter, jint event_type, jmetho
         num_frames = makeEventFrame(frames, event_type, event);
     }
 
+#ifndef MAXINE
     if (event_type == 0 || _JvmtiEnv_GetStackTrace == NULL) {
+#else
+    if (event_type == 0) {
+#endif
         if (OS::isSignalSafeTLS() || need_java_trace) {
             num_frames += getJavaTraceAsync(ucontext, frames + num_frames, _max_stack_depth);
         }
@@ -625,7 +669,13 @@ Error Profiler::start(Arguments& args, bool reset) {
         return Error("libjvm not found among loaded libraries");
     }
     VMStructs::init(libjvm);
+#ifndef MAXINE
     initJvmtiFunctions(libjvm);
+#else
+    JNIEnv* env = VM::jni();
+    _code_start_address = *((void**) libjvm->findSymbol("theCode"));
+    _code_end_address = *((void**) libjvm->findSymbol("theCodeEnd"));
+#endif
 
     if (args._output == OUTPUT_JFR) {
         Error error = _jfr.start(args._file);

@@ -1,6 +1,7 @@
 PROFILER_VERSION=1.6
 JATTACH_VERSION=1.5
 LIB_PROFILER=libasyncProfiler.so
+LIB_MXPROFILER=libasyncProfilerMX.so
 JATTACH=jattach
 PROFILER_JAR=async-profiler.jar
 CC=gcc
@@ -30,7 +31,7 @@ endif
 
 .PHONY: all release test clean
 
-all: build build/$(LIB_PROFILER) build/$(JATTACH) build/$(PROFILER_JAR)
+all: build build/$(LIB_PROFILER) build/$(LIB_MXPROFILER) build/$(JATTACH) build/$(PROFILER_JAR)
 
 release: build async-profiler-$(RELEASE_TAG).tar.gz
 
@@ -45,6 +46,9 @@ build:
 
 build/$(LIB_PROFILER): src/*.cpp src/*.h
 	$(CPP) $(CPPFLAGS) -DPROFILER_VERSION=\"$(PROFILER_VERSION)\" $(INCLUDES) -fPIC -shared -o $@ src/*.cpp $(LIBS)
+
+build/$(LIB_MXPROFILER): src/*.cpp src/*.h
+	$(CPP) $(CPPFLAGS) -DPROFILER_VERSION=\"$(PROFILER_VERSION)\" -DMAXINE $(INCLUDES) -fPIC -shared -o $@ src/*.cpp $(LIBS)
 
 build/$(JATTACH): src/jattach/jattach.c
 	$(CC) $(CFLAGS) -DJATTACH_VERSION=\"$(JATTACH_VERSION)\" -o $@ $^

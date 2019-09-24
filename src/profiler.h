@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2019, APT Group, School of Computer Science,
+ * The University of Manchester. All rights reserved.
  * Copyright 2016 Andrei Pangin
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -121,6 +123,10 @@ class Profiler {
     SpinLock _jit_lock;
     const void* _jit_min_address;
     const void* _jit_max_address;
+#ifdef MAXINE
+    const void* _code_start_address;
+    const void* _code_end_address;
+#endif
     CodeCache _java_methods;
     NativeCodeCache _runtime_stubs;
     NativeCodeCache* _native_libs[MAX_NATIVE_LIBS];
@@ -134,6 +140,9 @@ class Profiler {
     void* (*_ThreadLocalStorage_thread)();
     jvmtiError (*_JvmtiEnv_GetStackTrace)(void* self, void* thread, jint start_depth, jint max_frame_count,
                                           jvmtiFrameInfo* frame_buffer, jint* count_ptr);
+#ifdef MAXINE
+    jvmtiError (*_JvmtiEnv_GetCurrentThread)(void* self, void* thread);
+#endif
 
     void addJavaMethod(const void* address, int length, jmethodID method);
     void removeJavaMethod(const void* address, jmethodID method);
@@ -177,6 +186,11 @@ class Profiler {
         _native_lib_count(0),
         _original_NativeLibrary_load(NULL),
         _ThreadLocalStorage_thread(NULL),
+#ifdef MAXINE
+        _JvmtiEnv_GetCurrentThread(NULL),
+        _code_start_address((const void*)-1),
+        _code_end_address((const void*)0),
+#endif
         _JvmtiEnv_GetStackTrace(NULL) {
 
         for (int i = 0; i < CONCURRENCY_LEVEL; i++) {

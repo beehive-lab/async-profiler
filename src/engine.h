@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2019, APT Group, School of Computer Science,
+ * The University of Manchester. All rights reserved.
  * Copyright 2017 Andrei Pangin
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -32,7 +34,12 @@ class Engine {
     virtual void onThreadEnd() {}
 
     virtual int getNativeTrace(void* ucontext, int tid, const void** callchain, int max_depth,
+#ifndef MAXINE
                                const void* jit_min_address, const void* jit_max_address);
+#else
+                               const void* jit_min_address, const void* jit_max_address,
+                               const void* code_start_address, const void* code_end_address);
+#endif
 };
 
 #endif // _ENGINE_H

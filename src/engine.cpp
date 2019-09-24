@@ -1,4 +1,6 @@
 /*
+ * Copyright (c) 2019, APT Group, School of Computer Science,
+ * The University of Manchester. All rights reserved.
  * Copyright 2018 Andrei Pangin
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,7 +21,12 @@
 
 
 int Engine::getNativeTrace(void* ucontext, int tid, const void** callchain, int max_depth,
+#ifndef MAXINE
                            const void* jit_min_address, const void* jit_max_address) {
+#else
+                           const void* jit_min_address, const void* jit_max_address,
+                           const void* code_start_address, const void* code_end_address) {
+#endif
     StackFrame frame(ucontext);
     const void* pc = (const void*)frame.pc();
     uintptr_t fp = frame.fp();
@@ -32,7 +39,16 @@ int Engine::getNativeTrace(void* ucontext, int tid, const void** callchain, int 
     while (depth < max_depth && pc >= valid_pc) {
         callchain[depth++] = pc;
 
+#ifndef MAXINE
         if (pc >= jit_min_address && pc < jit_max_address) {
+#else
+        if ((pc >= jit_min_address && pc < jit_max_address) ||
+            (pc >= code_start_address && pc < code_end_address)) {
+            // ucontext_t* uc = (ucontext_t * )ucontext;
+            // uc->uc_mcontext->__ss.__rip = (uint64_t) pc;
+            // uc->uc_mcontext->__ss.__rbp = (uint64_t) uc->uc_mcontext->__ss.__rsp+8;
+            // uc->uc_mcontext->__ss.__rsp = (uint64_t) fp;
+#endif
             break;
         }
 
